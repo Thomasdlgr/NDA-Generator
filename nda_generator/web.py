@@ -211,7 +211,25 @@ def _docx_to_preview_html(path: Path) -> str:
       max-width: 42rem;
     }}
     p {{ margin: 0.65em 0; }}
-    h1, h2, h3 {{ font-family: system-ui, sans-serif; margin: 1em 0 0.5em; }}
+    h1, h2, h3, h4, h5, h6 {{
+      font-family: system-ui, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      font-weight: 700;
+      line-height: 1.25;
+      color: #111;
+      letter-spacing: -0.02em;
+    }}
+    h1 {{
+      font-size: 1.65rem;
+      margin: 1.35em 0 0.45em;
+      font-weight: 700;
+      border-bottom: 1px solid #ddd;
+      padding-bottom: 0.25em;
+    }}
+    h2 {{ font-size: 1.35rem; margin: 1.15em 0 0.4em; font-weight: 650; }}
+    h3 {{ font-size: 1.15rem; margin: 1em 0 0.35em; font-weight: 650; }}
+    h4 {{ font-size: 1.05rem; margin: 0.9em 0 0.3em; font-weight: 600; }}
+    h5 {{ font-size: 0.98rem; margin: 0.85em 0 0.28em; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }}
+    h6 {{ font-size: 0.95rem; margin: 0.8em 0 0.25em; font-weight: 600; color: #333; }}
     table {{ border-collapse: collapse; width: 100%; margin: 1em 0; }}
     td, th {{ border: 1px solid #ccc; padding: 0.35rem 0.5rem; vertical-align: top; }}
     .rev-del {{

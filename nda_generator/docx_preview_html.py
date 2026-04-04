@@ -1,9 +1,10 @@
-"""HTML de prévisualisation d'un .docx avec révisions Word (ins/del) en surbrillance."""
+"""HTML de prévisualisation d'un .docx avec révisions Word (ins/del) et titres (h1–h6)."""
 
 from __future__ import annotations
 
 import html
 import io
+import re
 import zipfile
 import xml.etree.ElementTree as ET
 
@@ -18,6 +19,93 @@ def _local_tag(tag: str) -> str:
     if tag.startswith("{"):
         return tag.rsplit("}", 1)[-1]
     return tag
+
+
+def _clip_heading_level(n: int) -> int | None:
+    if 1 <= n <= 6:
+        return n
+    if 7 <= n <= 9:
+        return 6
+    return None
+
+
+def _display_name_to_heading_level(name: str) -> int | None:
+    name = (name or "").strip()
+    m = re.match(r"(?i)^heading\s*(\d)\s*$", name)
+    if m:
+        return _clip_heading_level(int(m.group(1)))
+    m = re.match(r"(?i)^titre\s*(\d)\s*$", name)
+    if m:
+        return _clip_heading_level(int(m.group(1)))
+    if re.match(r"(?i)^(title|titre)$", name):
+        return 1
+    if re.match(r"(?i)^(subtitle|sous-titre|soustitre)$", name):
+        return 2
+    return None
+
+
+def _style_id_to_heading_level(style_id: str) -> int | None:
+    sid = (style_id or "").strip()
+    m = re.match(r"(?i)^heading\s*(\d)\s*$", sid)
+    if m:
+        return _clip_heading_level(int(m.group(1)))
+    m = re.match(r"(?i)^titre(\d)$", sid)
+    if m:
+        return _clip_heading_level(int(m.group(1)))
+    m = re.match(r"(?i)^heading(\d)$", sid)
+    if m:
+        return _clip_heading_level(int(m.group(1)))
+    low = sid.lower()
+    if low in ("title", "titre"):
+        return 1
+    if low in ("subtitle", "soustitre", "sous-titre"):
+        return 2
+    return None
+
+
+def _parse_styles_heading_levels(xml_bytes: bytes) -> dict[str, int]:
+    """Map w:styleId → niveau de titre (1–6) d’après w:name des styles de paragraphe."""
+    levels: dict[str, int] = {}
+    try:
+        root = ET.fromstring(xml_bytes)
+    except ET.ParseError:
+        return levels
+    for st in root.findall(_q("style")):
+        if st.get(_q("type")) != "paragraph":
+            continue
+        sid = st.get(_q("styleId"))
+        if not sid:
+            continue
+        name_el = st.find(_q("name"))
+        if name_el is None:
+            continue
+        display = name_el.get(_q("val")) or ""
+        lvl = _display_name_to_heading_level(display)
+        if lvl is not None:
+            levels[sid] = lvl
+    return levels
+
+
+def _paragraph_heading_level(p: ET.Element, style_levels: dict[str, int]) -> int | None:
+    ppr = p.find(_q("pPr"))
+    if ppr is None:
+        return None
+    style_id = None
+    ps = ppr.find(_q("pStyle"))
+    if ps is not None:
+        style_id = ps.get(_q("val"))
+    if style_id:
+        if style_id in style_levels:
+            return style_levels[style_id]
+        hid = _style_id_to_heading_level(style_id)
+        if hid is not None:
+            return hid
+    ol = ppr.find(_q("outlineLvl"))
+    if ol is not None:
+        raw = ol.get(_q("val"))
+        if raw is not None and raw.isdigit():
+            return _clip_heading_level(int(raw) + 1)
+    return None
 
 
 def _run_text(r: ET.Element) -> str:
@@ -112,77 +200,87 @@ def _segments_to_html(segs: list[tuple[str, str]]) -> str:
     return "".join(parts) if parts else "&nbsp;"
 
 
-def _render_paragraph(p: ET.Element) -> str:
+def _render_paragraph(p: ET.Element, style_levels: dict[str, int]) -> str:
     segs: list[tuple[str, str]] = []
     for child in p:
         if _local_tag(child.tag) == "pPr":
             continue
         segs.extend(_inline_child_segments(child))
     inner = _segments_to_html(segs)
+    level = _paragraph_heading_level(p, style_levels)
+    if level is not None:
+        tag = f"h{level}"
+        return f"<{tag}>{inner}</{tag}>"
     return f"<p>{inner}</p>"
 
 
-def _render_tc(tc: ET.Element) -> str:
+def _render_tc(tc: ET.Element, style_levels: dict[str, int]) -> str:
     parts: list[str] = []
     for el in tc:
         ln = _local_tag(el.tag)
         if ln == "tcPr":
             continue
         if ln == "p":
-            parts.append(_render_paragraph(el))
+            parts.append(_render_paragraph(el, style_levels))
         elif ln == "tbl":
-            parts.append(_render_table(el))
+            parts.append(_render_table(el, style_levels))
         else:
-            parts.append(_render_body_element(el))
+            parts.append(_render_body_element(el, style_levels))
     return "".join(parts) if parts else "&nbsp;"
 
 
-def _render_tr(tr: ET.Element) -> str:
+def _render_tr(tr: ET.Element, style_levels: dict[str, int]) -> str:
     cells: list[str] = []
     for el in tr:
         ln = _local_tag(el.tag)
         if ln == "trPr":
             continue
         if ln == "tc":
-            cells.append(f"<td>{_render_tc(el)}</td>")
+            cells.append(f"<td>{_render_tc(el, style_levels)}</td>")
     return "<tr>" + "".join(cells) + "</tr>"
 
 
-def _render_table(tbl: ET.Element) -> str:
+def _render_table(tbl: ET.Element, style_levels: dict[str, int]) -> str:
     rows: list[str] = []
     for el in tbl:
         ln = _local_tag(el.tag)
         if ln in ("tblPr", "tblGrid"):
             continue
         if ln == "tr":
-            rows.append(_render_tr(el))
+            rows.append(_render_tr(el, style_levels))
     return "<table>" + "".join(rows) + "</table>"
 
 
-def _render_body_element(el: ET.Element) -> str:
+def _render_body_element(el: ET.Element, style_levels: dict[str, int]) -> str:
     ln = _local_tag(el.tag)
     if ln == "p":
-        return _render_paragraph(el)
+        return _render_paragraph(el, style_levels)
     if ln == "tbl":
-        return _render_table(el)
+        return _render_table(el, style_levels)
     if ln == "sdt":
         inner = el.find(_q("sdtContent"))
         if inner is None:
             return ""
-        return "".join(filter(None, (_render_body_element(c) for c in inner)))
+        return "".join(filter(None, (_render_body_element(c, style_levels) for c in inner)))
     if ln in ("sectPr", "proofErr"):
         return ""
     return ""
 
 
 def docx_revision_html_fragment(docx_bytes: bytes) -> str:
-    """Extrait le corps du document et produit du HTML (insertions / suppressions marquées)."""
+    """Extrait le corps du document et produit du HTML (titres h1–h6, ins/del)."""
     buf = io.BytesIO(docx_bytes)
     with zipfile.ZipFile(buf, "r") as zf:
         try:
             xml_bytes = zf.read("word/document.xml")
         except KeyError as e:
             raise ValueError("word/document.xml manquant") from e
+        try:
+            styles_bytes = zf.read("word/styles.xml")
+        except KeyError:
+            styles_bytes = b""
+
+    style_levels = _parse_styles_heading_levels(styles_bytes) if styles_bytes else {}
 
     root = ET.fromstring(xml_bytes)
     body = root.find(_q("body"))
@@ -191,7 +289,7 @@ def docx_revision_html_fragment(docx_bytes: bytes) -> str:
 
     chunks: list[str] = []
     for child in body:
-        h = _render_body_element(child)
+        h = _render_body_element(child, style_levels)
         if h:
             chunks.append(h)
 
