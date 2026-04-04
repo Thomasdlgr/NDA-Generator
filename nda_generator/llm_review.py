@@ -19,13 +19,16 @@ Règles strictes :
 telles qu'indiquées dans le catalogue. Jamais de texte après un « | ».
 
 Remplacement de texte (obligatoire pour toute substitution) :
-- Dès que tu retires un passage pour le remplacer par une nouvelle rédaction, utilise **une seule** \
-opération « replace » : find = sous-chaîne EXACTE du texte à retirer, replace_with = le nouveau texte.
-- C'est ce qui produit dans Word le comportement attendu : l'ancien texte en **révision supprimée** \
-(texte barré en suivi des modifications) et le nouveau en **révision insérée**, avec la **même mise en \
-forme de caractères** que le passage remplacé (comportement natif de docx_editor).
-- **Interdit** pour un même changement rédactionnel : enchaîner « delete » puis « insert_after » ou \
-« insert_before » (risque d'ancres invalides, révisions non appariées, mise en forme incohérente).
+- Utilise **uniquement** l'action « replace » (pas delete+insert) : find = sous-chaîne EXACTE à retirer, \
+replace_with = le nouveau texte. Chaque replace produit l'ancien texte en révision supprimée (barré) et le neuf \
+en révision insérée.
+- **Privilégie des remplacements simples et courts** : « find » doit être la **plus petite** portion du texte \
+qui suffit pour la modification (une phrase, une incise, un nombre, un mot-clé), **pas** tout le paragraphe ni \
+la quasi-totalité d'un paragraphe. Évite le « remplacement paragraphe entier » sauf si le paragraphe est déjà \
+très court ou indivisible juridiquement.
+- Si plusieurs passages d'un même paragraphe (ou de paragraphes différents) doivent changer, utilise **plusieurs** \
+opérations « replace » distinctes, chacune avec son propre find court, plutôt qu'un seul find gigantesque.
+- **Interdit** pour une substitution : enchaîner « delete » puis « insert_after » ou « insert_before ».
 
 Autres actions :
 - « delete » seul : uniquement pour supprimer du texte **sans** le remplacer par du neuf au même endroit.
@@ -34,7 +37,8 @@ un fragment que tu remplaces par ce nouvel ajout).
 - « find », « text », « anchor » : sous-chaînes EXACTES du paragraphe (espaces, ponctuation, guillemets \
 « » vs " comme dans le source).
 - « occurrence » : 0 = première occurrence dans le paragraphe, 1 = deuxième, etc.
-- Préfère peu d'opérations ciblées. Si le NDA est déjà aligné avec le playbook, renvoie une liste vide.
+- Nombre d'opérations : autant de « replace » courts que nécessaire ; évite un seul replace « fourre-tout ». \
+Si le NDA est déjà aligné avec le playbook, renvoie une liste vide.
 - Ne invente pas de citations : si tu ne peux pas citer un extrait exact du catalogue, n'ajoute pas d'opération.
 
 Schéma d'une opération :
@@ -42,16 +46,20 @@ Schéma d'une opération :
 - delete : action, paragraph, text, occurrence (optionnel)
 - insert_after / insert_before : action, paragraph, anchor, text, occurrence (optionnel)
 
-Réponds UNIQUEMENT avec un objet JSON : {"operations":[...], "commentaire":"court résumé en français"} \
-sans markdown ni texte autour."""
+Format de réponse :
+- Réponds **uniquement** avec l'objet JSON suivant, sans autre texte ni bloc markdown : {"operations":[...]} \
+(« operations » peut être [] si aucune modification).
+- **Interdit** : champ « commentaire », explication, préambule, ou suggestion de commentaires Word ; \
+ta seule sortie est la liste d'opérations."""
 
 
-def _extract_json_object(text: str) -> dict[str, Any]:
+def normalize_llm_json_text(text: str) -> str:
+    """Retire espaces / fences markdown ; chaîne passée à json.loads."""
     text = text.strip()
     fence = re.match(r"^```(?:json)?\s*([\s\S]*?)```\s*$", text)
     if fence:
         text = fence.group(1).strip()
-    return json.loads(text)
+    return text
 
 
 def _to_operation(raw: dict[str, Any]) -> EditOperation:
@@ -95,7 +103,7 @@ def review_issue(
     preferred_wording: str,
     paragraph_catalog: str,
 ) -> tuple[list[EditOperation], str]:
-    """Appelle Claude et retourne (EditOperation[], commentaire)."""
+    """Appelle Claude ; retourne (EditOperation[], texte JSON normalisé pour logs / debug)."""
     user_content = f"""## Issue (playbook)
 **Nom :** {issue_nom}
 
@@ -111,6 +119,8 @@ def review_issue(
 ## Catalogue du NDA (référence de paragraphe + texte intégral du paragraphe)
 Les blocs sont séparés par ---. Chaque bloc commence par la référence P{{n}}#{{hash}} sur sa propre ligne.
 
+Préfère plusieurs « replace » avec des « find » courts et précis, plutôt qu'un seul replace qui recopie presque tout un paragraphe.
+
 {paragraph_catalog}
 """
 
@@ -122,10 +132,9 @@ Les blocs sont séparés par ---. Chaque bloc commence par la référence P{{n}}
     )
     text_blocks = [b.text for b in msg.content if b.type == "text"]
     raw_text = "\n".join(text_blocks)
-    data = _extract_json_object(raw_text)
+    json_text = normalize_llm_json_text(raw_text)
+    data = json.loads(json_text)
     ops_raw = data.get("operations") or []
     if not isinstance(ops_raw, list):
         raise ValueError("Le JSON doit contenir une clé 'operations' (liste)")
-    operations = [_to_operation(item) for item in ops_raw]
-    commentaire = str(data.get("commentaire", "")).strip()
-    return operations, commentaire
+    return [_to_operation(item) for item in ops_raw], json_text

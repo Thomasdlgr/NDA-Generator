@@ -6,16 +6,9 @@ import os
 import sys
 from pathlib import Path
 
-from anthropic import Anthropic
 from dotenv import load_dotenv
 
-from docx_editor import Document
-
-from nda_generator.document_context import build_paragraph_catalog
-from nda_generator.llm_review import review_issue
-from nda_generator.playbook import load_playbook
-
-DEFAULT_MODEL = "claude-sonnet-4-20250514"
+from nda_generator.pipeline import DEFAULT_MODEL, run_review
 
 DEFAULT_NDA = "NDA_Exemple.docx"
 DEFAULT_PLAYBOOK = "NDA_Playbook.xlsx"
@@ -23,7 +16,6 @@ DEFAULT_OUT = "NDA_revu.docx"
 
 
 def main(argv: list[str] | None = None) -> int:
-    # Charge .env depuis le répertoire courant ou un dossier parent (find_dotenv).
     load_dotenv()
 
     parser = argparse.ArgumentParser(
@@ -58,6 +50,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Modèle Anthropic (défaut: variable ANTHROPIC_MODEL ou Sonnet 4)",
     )
     parser.add_argument("-v", "--verbose", action="store_true", help="Logs détaillés")
+    parser.add_argument(
+        "--strict-ops",
+        action="store_true",
+        help="Refuser le batch si delete + insert_* sur le même paragraphe (forcer replace)",
+    )
     args = parser.parse_args(argv)
 
     cwd = Path.cwd()
@@ -71,73 +68,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     log = logging.getLogger("nda_generator")
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        log.error("Variable d'environnement ANTHROPIC_API_KEY manquante.")
-        return 1
-
-    if not nda_path.is_file():
-        log.error("Fichier NDA introuvable : %s (utilisez --nda ou lancez depuis le dossier du projet)", nda_path)
-        return 1
-    if not playbook_path.is_file():
-        log.error(
-            "Playbook introuvable : %s (utilisez --playbook ou lancez depuis le dossier du projet)",
-            playbook_path,
-        )
-        return 1
-
-    log.info("NDA=%s | playbook=%s | sortie=%s", nda_path, playbook_path, out_path)
-
-    issues = load_playbook(playbook_path)
-    if not issues:
-        log.error("Aucune issue chargée depuis le playbook.")
-        return 1
-    log.info("%d issues chargées depuis le playbook", len(issues))
-
-    client = Anthropic(api_key=api_key)
-
-    doc = Document.open(nda_path, author=args.author)
-    try:
-        for idx, issue in enumerate(issues, start=1):
-            catalog = build_paragraph_catalog(doc)
-            log.info("Issue %d/%d : %s", idx, len(issues), issue.nom[:80])
-            try:
-                operations, commentaire = review_issue(
-                    client,
-                    args.model,
-                    issue.nom,
-                    issue.preferred_position,
-                    issue.fallback_position,
-                    issue.preferred_wording,
-                    catalog,
-                )
-            except Exception as e:
-                log.exception("Échec LLM pour l'issue « %s » : %s", issue.nom, e)
-                continue
-
-            if commentaire:
-                log.info("Synthèse : %s", commentaire)
-            if not operations:
-                log.info("Aucune opération proposée.")
-                continue
-
-            log.info("%d opération(s) à appliquer", len(operations))
-            try:
-                doc.batch_edit(operations)
-            except Exception as e:
-                log.error(
-                    "batch_edit refusé pour « %s » (%s). Opérations ignorées pour cette issue.",
-                    issue.nom,
-                    e,
-                )
-                continue
-
-        doc.save(out_path)
-        log.info("Document enregistré : %s", out_path)
-    finally:
-        doc.close(cleanup=True)
-
-    return 0
+    ok = run_review(
+        nda_path=nda_path,
+        playbook_path=playbook_path,
+        out_path=out_path,
+        author=args.author,
+        model=args.model,
+        strict_ops=args.strict_ops,
+        log=log,
+    )
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":

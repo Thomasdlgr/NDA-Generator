@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NDA Generator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <h1>Revue NDA</h1>
+      <p class="hero-sub">Playbook Excel → marques Word (suivi des modifications)</p>
+    </header>
+
+    <p class="hint">Fichiers <strong>.docx</strong> et <strong>.xlsx</strong>. Clé API Anthropic dans <code>.env</code> ou l’environnement serveur.</p>
+
+    <form id="f" class="form-card">
+      <div class="upload-grid">
+        <div class="file-card" id="card-nda">
+          <input
+            type="file"
+            id="file-nda"
+            name="nda"
+            accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            required
+            class="visually-hidden"
+          />
+          <label for="file-nda" class="file-card-label">
+            <span class="file-badge docx">DOCX</span>
+            <span class="file-card-title">Accord de confidentialité</span>
+            <span class="file-card-hint">Glisser-déposer ou cliquer pour choisir</span>
+            <span class="file-card-name" id="nda-name" data-empty="Aucun fichier"></span>
+          </label>
+        </div>
+
+        <div class="file-card" id="card-playbook">
+          <input
+            type="file"
+            id="file-playbook"
+            name="playbook"
+            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            required
+            class="visually-hidden"
+          />
+          <label for="file-playbook" class="file-card-label">
+            <span class="file-badge xlsx">XLSX</span>
+            <span class="file-card-title">Playbook de négociation</span>
+            <span class="file-card-hint">Glisser-déposer ou cliquer pour choisir</span>
+            <span class="file-card-name" id="playbook-name" data-empty="Aucun fichier"></span>
+          </label>
+        </div>
+      </div>
+
+      <label class="field-label">
+        Nom de l’éditeur <span class="optional">(auteur des marques Word)</span>
+        <input type="text" name="author" placeholder="Prénom Nom" autocomplete="name" class="text-input" />
+      </label>
+
+      <div class="checks">
+        <label class="check-pill">
+          <input type="checkbox" name="strict_ops" value="1" />
+          <span>Mode strict</span>
+        </label>
+        <label class="check-pill">
+          <input type="checkbox" name="verbose" value="1" />
+          <span>Journal détaillé</span>
+        </label>
+      </div>
+
+      <button type="submit" class="btn-primary" id="go">
+        <span class="btn-text">Lancer la génération des marques</span>
+      </button>
+    </form>
+
+    <section id="progress-panel" class="progress-panel" hidden>
+      <div class="progress-panel-scroll">
+        <h2 class="progress-heading">Progression</h2>
+        <p class="progress-caption">LLM + application des marques dans le document</p>
+        <div class="bar-wrap" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="bar-wrap">
+          <div class="bar-fill" id="progress-bar"></div>
+        </div>
+        <p class="progress-label" id="progress-label">0 %</p>
+        <ul id="issues-checklist" class="issues-list"></ul>
+      </div>
+    </section>
+
+    <section id="preview-panel" class="preview-panel" hidden>
+      <h2 class="preview-heading">Aperçu du document revu</h2>
+      <p class="preview-caption">Suppressions surlignées en rouge (barré), insertions en vert. Rendu approximatif par rapport au fichier Word.</p>
+      <iframe
+        id="preview-frame"
+        class="preview-frame"
+        title="Aperçu du NDA revu"
+        sandbox=""
+      ></iframe>
+    </section>
+
+    <a id="dl" class="download-link" style="display: none" href="#"></a>
+    <pre id="log" class="log-panel" aria-live="polite"></pre>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
