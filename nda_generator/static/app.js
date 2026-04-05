@@ -26,10 +26,46 @@
   const reportPanel = document.getElementById("report-panel");
   const reportBody = document.getElementById("report-body");
   const previewIssueSelect = document.getElementById("preview-issue-select");
+  const btnStop = document.getElementById("stop-review");
+  const btnNew = document.getElementById("new-analysis");
 
   let es = null;
+  /** @type {string | null} */
+  let activeJobId = null;
   /** @type {Record<number, number[]>} */
   let paragraphIndicesByIssue = {};
+
+  function setStopVisible(show) {
+    if (btnStop) btnStop.hidden = !show;
+  }
+
+  function resetAnalysisUi() {
+    if (es) {
+      es.close();
+      es = null;
+    }
+    if (activeJobId) {
+      fetch("/api/jobs/" + encodeURIComponent(activeJobId) + "/cancel", {
+        method: "POST",
+      }).catch(function () {});
+    }
+    activeJobId = null;
+    setStopVisible(false);
+    dl.style.display = "none";
+    if (previewPanel) previewPanel.hidden = true;
+    if (previewFrame) previewFrame.removeAttribute("src");
+    logEl.textContent = "";
+    clearIssueDetail();
+    if (reportBody) reportBody.innerHTML = "";
+    if (reportPanel) reportPanel.hidden = true;
+    paragraphIndicesByIssue = {};
+    resetPreviewIssueSelect([]);
+    panel.hidden = true;
+    listEl.innerHTML = "";
+    setPct(0);
+    lbl.textContent = "";
+    go.disabled = false;
+  }
 
   function resetPreviewIssueSelect(issueTitles) {
     if (!previewIssueSelect) return;
@@ -146,6 +182,21 @@
     });
   }
 
+  if (btnNew) {
+    btnNew.addEventListener("click", function () {
+      resetAnalysisUi();
+    });
+  }
+
+  if (btnStop) {
+    btnStop.addEventListener("click", function () {
+      if (!activeJobId) return;
+      fetch("/api/jobs/" + encodeURIComponent(activeJobId) + "/cancel", {
+        method: "POST",
+      }).catch(function () {});
+    });
+  }
+
   function setPct(p) {
     const n = Math.max(0, Math.min(100, Number(p) || 0));
     bar.style.width = n + "%";
@@ -166,6 +217,8 @@
       es.close();
       es = null;
     }
+    activeJobId = null;
+    setStopVisible(false);
     dl.style.display = "none";
     if (previewPanel) previewPanel.hidden = true;
     if (previewFrame) previewFrame.removeAttribute("src");
@@ -193,9 +246,12 @@
           typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail || j, null, 2);
         panel.hidden = true;
         go.disabled = false;
+        setStopVisible(false);
         return;
       }
       const jobId = j.job_id;
+      activeJobId = jobId;
+      setStopVisible(true);
       resetPreviewIssueSelect(j.issues || []);
       (j.issues || []).forEach(function (title, i) {
         const li = document.createElement("li");
@@ -254,11 +310,19 @@
         if (data.kind === "complete") {
           es.close();
           es = null;
+          activeJobId = null;
+          setStopVisible(false);
           setPct(data.percent ?? (data.success ? 100 : 0));
-          lbl.textContent =
-            (data.percent ?? 0) +
-            " % — " +
-            (data.success ? "terminé" : "terminé avec erreurs");
+          if (data.cancelled && data.success) {
+            lbl.textContent =
+              (data.percent ?? 0) +
+              " % — interrompu (document partiel enregistré)";
+          } else {
+            lbl.textContent =
+              (data.percent ?? 0) +
+              " % — " +
+              (data.success ? "terminé" : "terminé avec erreurs");
+          }
           go.disabled = false;
           if (data.success) {
             const ndaFile = inputNda.files[0];
@@ -274,7 +338,9 @@
             dl.href =
               "/api/jobs/" + encodeURIComponent(jobId) + "/download";
             dl.download = base + "_revu.docx";
-            dl.textContent = "Télécharger le document revu";
+            dl.textContent = data.cancelled
+              ? "Télécharger le document (partiel)"
+              : "Télécharger le document revu";
             dl.style.display = "inline-block";
           } else {
             fetch("/api/jobs/" + encodeURIComponent(jobId) + "/log")
@@ -291,6 +357,8 @@
       es.onerror = function () {
         if (es) es.close();
         es = null;
+        activeJobId = null;
+        setStopVisible(false);
         go.disabled = false;
         logEl.textContent =
           (logEl.textContent || "") + "\nConnexion aux événements interrompue.";
@@ -299,6 +367,8 @@
       logEl.textContent = "Erreur : " + err;
       panel.hidden = true;
       go.disabled = false;
+      activeJobId = null;
+      setStopVisible(false);
     }
   });
 })();

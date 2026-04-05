@@ -22,6 +22,7 @@ from nda_generator.playbook import load_playbook
 DEFAULT_MODEL = "claude-sonnet-4-20250514"
 
 ProgressCallback = Callable[[dict[str, Any]], None]
+CancelCheck = Callable[[], bool]
 
 
 def run_review(
@@ -34,8 +35,9 @@ def run_review(
     strict_ops: bool = False,
     log: logging.Logger,
     on_progress: ProgressCallback | None = None,
+    cancel_check: CancelCheck | None = None,
 ) -> bool:
-    """Exécute la revue playbook complète. Retourne True si le document a été enregistré."""
+    """Exécute la revue playbook complète. Retourne True si le document a été enregistré (y compris partiel après arrêt)."""
     nda_path = nda_path.resolve()
     playbook_path = playbook_path.resolve()
     out_path = out_path.resolve()
@@ -88,6 +90,9 @@ def run_review(
 
     try:
         for idx, issue in enumerate(issues, start=1):
+            if cancel_check and cancel_check():
+                log.info("Revue interrompue par l’utilisateur avant l’issue %d/%d.", idx, n_issues)
+                break
 
             def emit_issue_end(
                 status: str,
@@ -215,11 +220,14 @@ def run_review(
             )
 
         doc.save(out_path)
-        log.info("Document enregistré : %s", out_path)
-        log.info(
-            "Astuce Word : si les suppressions semblent « en commentaire », vérifiez "
-            "Révision > Affichage des marques (bulles vs tout en ligne)."
-        )
+        if cancel_check and cancel_check():
+            log.info("Document partiel enregistré après arrêt : %s", out_path)
+        else:
+            log.info("Document enregistré : %s", out_path)
+            log.info(
+                "Astuce Word : si les suppressions semblent « en commentaire », vérifiez "
+                "Révision > Affichage des marques (bulles vs tout en ligne)."
+            )
     finally:
         doc.close(cleanup=True)
 

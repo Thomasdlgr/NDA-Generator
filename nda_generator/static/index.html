@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>NDA Generator</title>
+  <title>NDA Manager</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
@@ -15,11 +15,11 @@
 <body>
   <div class="page">
     <header class="hero">
-      <h1>Revue NDA</h1>
+      <h1>NDA Manager</h1>
       <p class="hero-sub">Playbook Excel → markups Word (suivi des modifications)</p>
     </header>
 
-    <p class="hint">Fichiers <strong>.docx</strong> et <strong>.xlsx</strong>. Clé API Anthropic dans <code>.env</code> ou l’environnement serveur.</p>
+    <p class="hint">Fichiers au format <strong>.docx</strong> pour les NDAs et <strong>.xlsx</strong> pour le playbook.</p>
 
     <form id="f" class="form-card">
       <div class="upload-grid">
@@ -34,7 +34,7 @@
           />
           <label for="file-nda" class="file-card-label">
             <span class="file-badge docx">DOCX</span>
-            <span class="file-card-title">Accord de confidentialité</span>
+            <span class="file-card-title">NDA</span>
             <span class="file-card-hint">Glisser-déposer ou cliquer pour choisir</span>
             <span class="file-card-name" id="nda-name" data-empty="Aucun fichier"></span>
           </label>
@@ -51,7 +51,7 @@
           />
           <label for="file-playbook" class="file-card-label">
             <span class="file-badge xlsx">XLSX</span>
-            <span class="file-card-title">Playbook de négociation</span>
+            <span class="file-card-title">Playbook</span>
             <span class="file-card-hint">Glisser-déposer ou cliquer pour choisir</span>
             <span class="file-card-name" id="playbook-name" data-empty="Aucun fichier"></span>
           </label>
@@ -59,7 +59,7 @@
       </div>
 
       <label class="field-label">
-        Nom de l’éditeur <span class="optional">(auteur des markups Word)</span>
+        Nom de l’éditeur <span class="optional">(auteur des markups dans Word)</span>
         <input type="text" name="author" placeholder="Prénom Nom" autocomplete="name" class="text-input" />
       </label>
 
@@ -74,9 +74,14 @@
         </label>
       </div>
 
-      <button type="submit" class="btn-primary" id="go">
-        <span class="btn-text">Lancer la génération des markups</span>
-      </button>
+      <div class="form-actions">
+        <button type="submit" class="btn-primary" id="go">
+          <span class="btn-text">Lancer la génération des markups</span>
+        </button>
+        <button type="button" class="btn-secondary" id="new-analysis">
+          Nouvelle analyse
+        </button>
+      </div>
     </form>
 
     <section id="progress-panel" class="progress-panel" hidden>
@@ -87,6 +92,11 @@
           <div class="bar-fill" id="progress-bar"></div>
         </div>
         <p class="progress-label" id="progress-label">0 %</p>
+        <div class="progress-actions">
+          <button type="button" class="btn-stop" id="stop-review" hidden>
+            Arrêter la relue
+          </button>
+        </div>
         <aside id="issue-detail" class="issue-detail" hidden aria-live="polite">
           <h3 id="issue-detail-title" class="issue-detail-title"></h3>
           <div class="issue-detail-blocks">

@@ -77,17 +77,21 @@ def _run_job_worker(job: dict) -> None:
             strict_ops=job["strict_ops"],
             log=log,
             on_progress=on_progress,
+            cancel_check=lambda: bool(job.get("cancel_requested")),
         )
         job["success"] = ok
     except Exception:
         logging.getLogger("nda_job").exception("Job %s", job["job_id"])
         job["success"] = False
     finally:
+        cancelled = bool(job.get("cancel_requested"))
+        success = bool(job.get("success"))
         job["event_q"].put(
             {
                 "kind": "complete",
-                "success": bool(job.get("success")),
-                "percent": 100 if job.get("success") else last_pct,
+                "success": success,
+                "cancelled": cancelled and success,
+                "percent": 100 if success and not cancelled else last_pct,
             }
         )
 
@@ -144,6 +148,7 @@ async def create_job(
         "started": False,
         "start_lock": threading.Lock(),
         "success": None,
+        "cancel_requested": False,
     }
     with _JOBS_LOCK:
         _JOBS[job_id] = job
@@ -183,6 +188,16 @@ async def job_events(job_id: str) -> StreamingResponse:
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@app.post("/api/jobs/{job_id}/cancel")
+async def cancel_job(job_id: str) -> JSONResponse:
+    with _JOBS_LOCK:
+        job = _JOBS.get(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job introuvable")
+        job["cancel_requested"] = True
+    return JSONResponse({"ok": True})
 
 
 def _docx_to_preview_html(path: Path) -> str:
