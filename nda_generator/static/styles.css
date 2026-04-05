@@ -578,6 +578,38 @@ body {
   color: var(--muted);
 }
 
+.preview-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.preview-toolbar-label {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.preview-issue-select {
+  flex: 1;
+  min-width: 12rem;
+  max-width: 100%;
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--bg);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.85rem;
+}
+
+.preview-issue-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .preview-frame {
   display: block;
   width: 100%;

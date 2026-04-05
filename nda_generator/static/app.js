@@ -25,8 +25,43 @@
   const issueDetailWording = document.getElementById("issue-detail-wording");
   const reportPanel = document.getElementById("report-panel");
   const reportBody = document.getElementById("report-body");
+  const previewIssueSelect = document.getElementById("preview-issue-select");
 
   let es = null;
+  /** @type {Record<number, number[]>} */
+  let paragraphIndicesByIssue = {};
+
+  function resetPreviewIssueSelect(issueTitles) {
+    if (!previewIssueSelect) return;
+    previewIssueSelect.innerHTML =
+      '<option value="">— Toutes (aucun surlignage) —</option>';
+    (issueTitles || []).forEach(function (title, i) {
+      const opt = document.createElement("option");
+      opt.value = String(i + 1);
+      opt.textContent = title;
+      previewIssueSelect.appendChild(opt);
+    });
+    previewIssueSelect.disabled = true;
+    previewIssueSelect.value = "";
+  }
+
+  function postHighlightToPreview(indices) {
+    const fr = previewFrame;
+    if (!fr || !fr.contentWindow) return;
+    fr.contentWindow.postMessage(
+      { type: "nda-highlight", indices: indices || [] },
+      "*"
+    );
+  }
+
+  function postHighlightFromSelect() {
+    if (!previewIssueSelect || !previewFrame || !previewFrame.contentWindow) return;
+    const v = previewIssueSelect.value;
+    const idx = v ? parseInt(v, 10) : NaN;
+    const indices =
+      !v || isNaN(idx) ? [] : paragraphIndicesByIssue[idx] || [];
+    postHighlightToPreview(indices);
+  }
 
   function clearIssueDetail() {
     if (!issueDetail) return;
@@ -99,6 +134,18 @@
   wireDrop(cardNda, inputNda);
   wireDrop(cardPb, inputPb);
 
+  if (previewIssueSelect) {
+    previewIssueSelect.addEventListener("change", function () {
+      postHighlightFromSelect();
+    });
+  }
+  if (previewFrame) {
+    previewFrame.addEventListener("load", function () {
+      if (previewIssueSelect) previewIssueSelect.disabled = false;
+      postHighlightFromSelect();
+    });
+  }
+
   function setPct(p) {
     const n = Math.max(0, Math.min(100, Number(p) || 0));
     bar.style.width = n + "%";
@@ -126,6 +173,8 @@
     clearIssueDetail();
     if (reportBody) reportBody.innerHTML = "";
     if (reportPanel) reportPanel.hidden = true;
+    paragraphIndicesByIssue = {};
+    resetPreviewIssueSelect([]);
     panel.hidden = false;
     listEl.innerHTML = "";
     setPct(0);
@@ -147,6 +196,7 @@
         return;
       }
       const jobId = j.job_id;
+      resetPreviewIssueSelect(j.issues || []);
       (j.issues || []).forEach(function (title, i) {
         const li = document.createElement("li");
         li.dataset.index = String(i + 1);
@@ -178,6 +228,13 @@
         if (data.kind === "issue_end") {
           setPct(data.percent ?? 0);
           clearIssueDetail();
+          if (typeof data.index === "number") {
+            paragraphIndicesByIssue[data.index] = Array.isArray(
+              data.paragraph_indices
+            )
+              ? data.paragraph_indices
+              : [];
+          }
           if (data.summary_html && reportBody && reportPanel) {
             reportPanel.hidden = false;
             reportBody.insertAdjacentHTML("beforeend", data.summary_html);

@@ -186,6 +186,26 @@ def _escaped_with_line_breaks(text: str) -> str:
     return esc.replace("\n", "<br />")
 
 
+def _iter_wp_depth_first(el: ET.Element):
+    """Ordre depth-first des w:p sous un élément (aligné sur getElementsByTagName('w:p') du corps)."""
+    for child in el:
+        if _local_tag(child.tag) == "p":
+            yield child
+        else:
+            yield from _iter_wp_depth_first(child)
+
+
+def _paragraph_index_map(body: ET.Element) -> dict[int, int]:
+    return {id(p): i for i, p in enumerate(_iter_wp_depth_first(body), start=1)}
+
+
+def _p_data_attr(p_el: ET.Element, idx_map: dict[int, int]) -> str:
+    n = idx_map.get(id(p_el))
+    if n is None:
+        return ""
+    return f' data-p-index="{n}"'
+
+
 def _segments_to_html(segs: list[tuple[str, str]]) -> str:
     parts: list[str] = []
     for kind, text in _merge_adjacent(segs):
@@ -200,71 +220,74 @@ def _segments_to_html(segs: list[tuple[str, str]]) -> str:
     return "".join(parts) if parts else "&nbsp;"
 
 
-def _render_paragraph(p: ET.Element, style_levels: dict[str, int]) -> str:
+def _render_paragraph(p: ET.Element, style_levels: dict[str, int], idx_map: dict[int, int]) -> str:
     segs: list[tuple[str, str]] = []
     for child in p:
         if _local_tag(child.tag) == "pPr":
             continue
         segs.extend(_inline_child_segments(child))
     inner = _segments_to_html(segs)
+    attr = _p_data_attr(p, idx_map)
     level = _paragraph_heading_level(p, style_levels)
     if level is not None:
         tag = f"h{level}"
-        return f"<{tag}>{inner}</{tag}>"
-    return f"<p>{inner}</p>"
+        return f"<{tag}{attr}>{inner}</{tag}>"
+    return f"<p{attr}>{inner}</p>"
 
 
-def _render_tc(tc: ET.Element, style_levels: dict[str, int]) -> str:
+def _render_tc(tc: ET.Element, style_levels: dict[str, int], idx_map: dict[int, int]) -> str:
     parts: list[str] = []
     for el in tc:
         ln = _local_tag(el.tag)
         if ln == "tcPr":
             continue
         if ln == "p":
-            parts.append(_render_paragraph(el, style_levels))
+            parts.append(_render_paragraph(el, style_levels, idx_map))
         elif ln == "tbl":
-            parts.append(_render_table(el, style_levels))
+            parts.append(_render_table(el, style_levels, idx_map))
         else:
-            parts.append(_render_body_element(el, style_levels))
+            parts.append(_render_body_element(el, style_levels, idx_map))
     return "".join(parts) if parts else "&nbsp;"
 
 
-def _render_tr(tr: ET.Element, style_levels: dict[str, int]) -> str:
+def _render_tr(tr: ET.Element, style_levels: dict[str, int], idx_map: dict[int, int]) -> str:
     cells: list[str] = []
     for el in tr:
         ln = _local_tag(el.tag)
         if ln == "trPr":
             continue
         if ln == "tc":
-            cells.append(f"<td>{_render_tc(el, style_levels)}</td>")
+            cells.append(f"<td>{_render_tc(el, style_levels, idx_map)}</td>")
     return "<tr>" + "".join(cells) + "</tr>"
 
 
-def _render_table(tbl: ET.Element, style_levels: dict[str, int]) -> str:
+def _render_table(tbl: ET.Element, style_levels: dict[str, int], idx_map: dict[int, int]) -> str:
     rows: list[str] = []
     for el in tbl:
         ln = _local_tag(el.tag)
         if ln in ("tblPr", "tblGrid"):
             continue
         if ln == "tr":
-            rows.append(_render_tr(el, style_levels))
+            rows.append(_render_tr(el, style_levels, idx_map))
     return "<table>" + "".join(rows) + "</table>"
 
 
-def _render_body_element(el: ET.Element, style_levels: dict[str, int]) -> str:
+def _render_body_element(el: ET.Element, style_levels: dict[str, int], idx_map: dict[int, int]) -> str:
     ln = _local_tag(el.tag)
     if ln == "p":
-        return _render_paragraph(el, style_levels)
+        return _render_paragraph(el, style_levels, idx_map)
     if ln == "tbl":
-        return _render_table(el, style_levels)
+        return _render_table(el, style_levels, idx_map)
     if ln == "sdt":
         inner = el.find(_q("sdtContent"))
         if inner is None:
             return ""
-        return "".join(filter(None, (_render_body_element(c, style_levels) for c in inner)))
+        return "".join(filter(None, (_render_body_element(c, style_levels, idx_map) for c in inner)))
     if ln in ("sectPr", "proofErr"):
         return ""
-    return ""
+    return "".join(
+        filter(None, (_render_body_element(c, style_levels, idx_map) for c in el))
+    )
 
 
 def docx_revision_html_fragment(docx_bytes: bytes) -> str:
@@ -287,9 +310,11 @@ def docx_revision_html_fragment(docx_bytes: bytes) -> str:
     if body is None:
         return "<p>(Corps du document introuvable.)</p>"
 
+    idx_map = _paragraph_index_map(body)
+
     chunks: list[str] = []
     for child in body:
-        h = _render_body_element(child, style_levels)
+        h = _render_body_element(child, style_levels, idx_map)
         if h:
             chunks.append(h)
 

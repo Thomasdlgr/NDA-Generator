@@ -16,6 +16,7 @@ from nda_generator.llm_review import review_issue
 from nda_generator.llm_summary import format_static_issue_report, summarize_applied_edits
 from nda_generator.ops_logging import log_operations
 from nda_generator.operations_validate import explain_delete_insert_violation
+from nda_generator.paragraph_refs import paragraph_indices_from_operations
 from nda_generator.playbook import load_playbook
 
 DEFAULT_MODEL = "claude-sonnet-4-20250514"
@@ -88,7 +89,11 @@ def run_review(
     try:
         for idx, issue in enumerate(issues, start=1):
 
-            def emit_issue_end(status: str, summary_html: str) -> None:
+            def emit_issue_end(
+                status: str,
+                summary_html: str,
+                paragraph_indices: list[int] | None = None,
+            ) -> None:
                 if on_progress:
                     on_progress(
                         {
@@ -99,6 +104,7 @@ def run_review(
                             "status": status,
                             "percent": _pct_done(idx),
                             "summary_html": summary_html,
+                            "paragraph_indices": paragraph_indices or [],
                         }
                     )
 
@@ -139,6 +145,7 @@ def run_review(
                         "Erreur lors de l’appel au modèle de revue.",
                         "Aucune modification n’a été appliquée pour cette issue.",
                     ),
+                    [],
                 )
                 continue
 
@@ -154,6 +161,7 @@ def run_review(
                         "Le modèle n’a proposé aucune modification du NDA pour cette issue.",
                         "Aucun markup Word n’a été appliqué sur ce point.",
                     ),
+                    [],
                 )
                 continue
 
@@ -172,6 +180,7 @@ def run_review(
                             f"Lot d’opérations rejeté (mode strict) : {violation}",
                             "Aucune modification n’a été appliquée pour cette issue.",
                         ),
+                        paragraph_indices_from_operations(operations),
                     )
                     continue
                 log.warning("Motif d'alerte révisions : %s", violation)
@@ -192,13 +201,18 @@ def run_review(
                         "Les modifications n’ont pas pu être enregistrées dans le document Word.",
                         f"Détail technique : {e!s}",
                     ),
+                    paragraph_indices_from_operations(operations),
                 )
                 continue
 
             add_issue_comments_for_operations(doc, issue.nom, operations, log)
 
             summary_html = summarize_applied_edits(client, model, issue.nom, operations, log)
-            emit_issue_end(end_status, summary_html)
+            emit_issue_end(
+                end_status,
+                summary_html,
+                paragraph_indices_from_operations(operations),
+            )
 
         doc.save(out_path)
         log.info("Document enregistré : %s", out_path)

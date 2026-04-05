@@ -116,12 +116,18 @@
 
     <section id="preview-panel" class="preview-panel" hidden>
       <h2 class="preview-heading">Aperçu du document revu</h2>
-      <p class="preview-caption">Suppressions surlignées en rouge (barré), insertions en vert. Rendu approximatif par rapport au fichier Word.</p>
+      <p class="preview-caption">Suppressions en rouge (barré), insertions en vert. Choisir une issue pour surligner en jaune les paragraphes modifiés.</p>
+      <div class="preview-toolbar">
+        <label class="preview-toolbar-label" for="preview-issue-select">Surligner les révisions de</label>
+        <select id="preview-issue-select" class="preview-issue-select" disabled>
+          <option value="">— Toutes (aucun surlignage) —</option>
+        </select>
+      </div>
       <iframe
         id="preview-frame"
         class="preview-frame"
         title="Aperçu du NDA revu"
-        sandbox=""
+        sandbox="allow-scripts"
       ></iframe>
     </section>
 

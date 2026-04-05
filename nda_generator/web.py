@@ -247,10 +247,33 @@ def _docx_to_preview_html(path: Path) -> str:
       border-radius: 2px;
       padding: 0 0.12em;
     }}
+    .issue-highlight {{
+      background-color: rgba(250, 204, 21, 0.5) !important;
+      box-shadow: 0 0 0 2px rgba(202, 138, 4, 0.9);
+      border-radius: 3px;
+      transition: background-color 0.2s ease, box-shadow 0.2s ease;
+    }}
   </style>
 </head>
 <body>
 {inner}
+<script>
+(function () {{
+  window.addEventListener("message", function (ev) {{
+    if (!ev.data || ev.data.type !== "nda-highlight") return;
+    document.querySelectorAll(".issue-highlight").forEach(function (el) {{
+      el.classList.remove("issue-highlight");
+    }});
+    (ev.data.indices || []).forEach(function (n) {{
+      document.querySelectorAll('[data-p-index="' + String(n) + '"]').forEach(function (el) {{
+        el.classList.add("issue-highlight");
+      }});
+    }});
+    var first = document.querySelector(".issue-highlight");
+    if (first) first.scrollIntoView({{ behavior: "smooth", block: "center" }});
+  }});
+}})();
+</script>
 </body>
 </html>"""
 
