@@ -16,7 +16,7 @@
   <div class="page">
     <header class="hero">
       <h1>Revue NDA</h1>
-      <p class="hero-sub">Playbook Excel → marques Word (suivi des modifications)</p>
+      <p class="hero-sub">Playbook Excel → markups Word (suivi des modifications)</p>
     </header>
 
     <p class="hint">Fichiers <strong>.docx</strong> et <strong>.xlsx</strong>. Clé API Anthropic dans <code>.env</code> ou l’environnement serveur.</p>
@@ -59,7 +59,7 @@
       </div>
 
       <label class="field-label">
-        Nom de l’éditeur <span class="optional">(auteur des marques Word)</span>
+        Nom de l’éditeur <span class="optional">(auteur des markups Word)</span>
         <input type="text" name="author" placeholder="Prénom Nom" autocomplete="name" class="text-input" />
       </label>
 
@@ -75,20 +75,43 @@
       </div>
 
       <button type="submit" class="btn-primary" id="go">
-        <span class="btn-text">Lancer la génération des marques</span>
+        <span class="btn-text">Lancer la génération des markups</span>
       </button>
     </form>
 
     <section id="progress-panel" class="progress-panel" hidden>
       <div class="progress-panel-scroll">
         <h2 class="progress-heading">Progression</h2>
-        <p class="progress-caption">LLM + application des marques dans le document</p>
+        <p class="progress-caption">LLM + application des markups dans le document</p>
         <div class="bar-wrap" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="bar-wrap">
           <div class="bar-fill" id="progress-bar"></div>
         </div>
         <p class="progress-label" id="progress-label">0 %</p>
+        <aside id="issue-detail" class="issue-detail" hidden aria-live="polite">
+          <h3 id="issue-detail-title" class="issue-detail-title"></h3>
+          <div class="issue-detail-blocks">
+            <div class="issue-detail-block">
+              <span class="issue-detail-label">Position préférée</span>
+              <p id="issue-detail-preferred" class="issue-detail-body"></p>
+            </div>
+            <div class="issue-detail-block">
+              <span class="issue-detail-label">Position de repli (fallback)</span>
+              <p id="issue-detail-fallback" class="issue-detail-body"></p>
+            </div>
+            <div class="issue-detail-block issue-detail-block--wording">
+              <span class="issue-detail-label">Formulation cible (preferred wording)</span>
+              <p id="issue-detail-wording" class="issue-detail-body"></p>
+            </div>
+          </div>
+        </aside>
         <ul id="issues-checklist" class="issues-list"></ul>
       </div>
+    </section>
+
+    <section id="report-panel" class="report-panel" hidden>
+      <h2 class="report-heading">Compte rendu des modifications</h2>
+      <p class="report-caption">Synthèse générée après chaque issue (HTML, contenu assaini côté serveur).</p>
+      <div id="report-body" class="report-body" aria-live="polite"></div>
     </section>
 
     <section id="preview-panel" class="preview-panel" hidden>

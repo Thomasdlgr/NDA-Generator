@@ -18,8 +18,38 @@
   const namePb = document.getElementById("playbook-name");
   const cardNda = document.getElementById("card-nda");
   const cardPb = document.getElementById("card-playbook");
+  const issueDetail = document.getElementById("issue-detail");
+  const issueDetailTitle = document.getElementById("issue-detail-title");
+  const issueDetailPreferred = document.getElementById("issue-detail-preferred");
+  const issueDetailFallback = document.getElementById("issue-detail-fallback");
+  const issueDetailWording = document.getElementById("issue-detail-wording");
+  const reportPanel = document.getElementById("report-panel");
+  const reportBody = document.getElementById("report-body");
 
   let es = null;
+
+  function clearIssueDetail() {
+    if (!issueDetail) return;
+    issueDetail.hidden = true;
+    if (issueDetailTitle) issueDetailTitle.textContent = "";
+    if (issueDetailPreferred) issueDetailPreferred.textContent = "";
+    if (issueDetailFallback) issueDetailFallback.textContent = "";
+    if (issueDetailWording) issueDetailWording.textContent = "";
+  }
+
+  function fillIssueDetail(data) {
+    if (!issueDetail) return;
+    function place(el, text) {
+      if (!el) return;
+      var s = text != null ? String(text).trim() : "";
+      el.textContent = s || "—";
+    }
+    if (issueDetailTitle) issueDetailTitle.textContent = data.title || "";
+    place(issueDetailPreferred, data.preferred_position);
+    place(issueDetailFallback, data.fallback_position);
+    place(issueDetailWording, data.preferred_wording);
+    issueDetail.hidden = false;
+  }
 
   function setFileName(span, file) {
     span.textContent = file ? file.name : "";
@@ -93,6 +123,9 @@
     if (previewPanel) previewPanel.hidden = true;
     if (previewFrame) previewFrame.removeAttribute("src");
     logEl.textContent = "";
+    clearIssueDetail();
+    if (reportBody) reportBody.innerHTML = "";
+    if (reportPanel) reportPanel.hidden = true;
     panel.hidden = false;
     listEl.innerHTML = "";
     setPct(0);
@@ -135,6 +168,7 @@
         if (data.kind === "init") setPct(data.percent ?? 0);
         if (data.kind === "issue_begin") {
           setPct(data.percent ?? 0);
+          fillIssueDetail(data);
           document.querySelectorAll("#issues-checklist li").forEach(function (li) {
             li.classList.remove("current");
           });
@@ -143,6 +177,11 @@
         }
         if (data.kind === "issue_end") {
           setPct(data.percent ?? 0);
+          clearIssueDetail();
+          if (data.summary_html && reportBody && reportPanel) {
+            reportPanel.hidden = false;
+            reportBody.insertAdjacentHTML("beforeend", data.summary_html);
+          }
           const li = listEl.querySelector('li[data-index="' + data.index + '"]');
           if (li) {
             li.classList.remove("current");

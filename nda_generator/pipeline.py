@@ -13,6 +13,7 @@ from docx_editor import Document
 from nda_generator.document_context import build_paragraph_catalog
 from nda_generator.issue_comments import add_issue_comments_for_operations
 from nda_generator.llm_review import review_issue
+from nda_generator.llm_summary import format_static_issue_report, summarize_applied_edits
 from nda_generator.ops_logging import log_operations
 from nda_generator.operations_validate import explain_delete_insert_violation
 from nda_generator.playbook import load_playbook
@@ -86,6 +87,21 @@ def run_review(
 
     try:
         for idx, issue in enumerate(issues, start=1):
+
+            def emit_issue_end(status: str, summary_html: str) -> None:
+                if on_progress:
+                    on_progress(
+                        {
+                            "kind": "issue_end",
+                            "index": idx,
+                            "total": n_issues,
+                            "title": issue.nom,
+                            "status": status,
+                            "percent": _pct_done(idx),
+                            "summary_html": summary_html,
+                        }
+                    )
+
             if on_progress:
                 on_progress(
                     {
@@ -94,6 +110,9 @@ def run_review(
                         "total": n_issues,
                         "title": issue.nom,
                         "percent": _pct_done(idx - 1),
+                        "preferred_position": issue.preferred_position,
+                        "fallback_position": issue.fallback_position,
+                        "preferred_wording": issue.preferred_wording,
                     }
                 )
 
@@ -113,17 +132,14 @@ def run_review(
             except Exception:
                 log.exception("Échec LLM pour l'issue « %s »", issue.nom)
                 end_status = "llm_error"
-                if on_progress:
-                    on_progress(
-                        {
-                            "kind": "issue_end",
-                            "index": idx,
-                            "total": n_issues,
-                            "title": issue.nom,
-                            "status": end_status,
-                            "percent": _pct_done(idx),
-                        }
-                    )
+                emit_issue_end(
+                    end_status,
+                    format_static_issue_report(
+                        issue.nom,
+                        "Erreur lors de l’appel au modèle de revue.",
+                        "Aucune modification n’a été appliquée pour cette issue.",
+                    ),
+                )
                 continue
 
             log.debug("Réponse JSON LLM (normalisée) :\n%s", llm_json_text)
@@ -131,17 +147,14 @@ def run_review(
             if not operations:
                 log.info("Aucune opération proposée.")
                 end_status = "no_ops"
-                if on_progress:
-                    on_progress(
-                        {
-                            "kind": "issue_end",
-                            "index": idx,
-                            "total": n_issues,
-                            "title": issue.nom,
-                            "status": end_status,
-                            "percent": _pct_done(idx),
-                        }
-                    )
+                emit_issue_end(
+                    end_status,
+                    format_static_issue_report(
+                        issue.nom,
+                        "Le modèle n’a proposé aucune modification du NDA pour cette issue.",
+                        "Aucun markup Word n’a été appliqué sur ce point.",
+                    ),
+                )
                 continue
 
             log.info("%d opération(s) à appliquer — détail :", len(operations))
@@ -152,17 +165,14 @@ def run_review(
                 if strict_ops:
                     log.error("Lot rejeté (--strict-ops) pour « %s » : %s", issue.nom, violation)
                     end_status = "strict_rejected"
-                    if on_progress:
-                        on_progress(
-                            {
-                                "kind": "issue_end",
-                                "index": idx,
-                                "total": n_issues,
-                                "title": issue.nom,
-                                "status": end_status,
-                                "percent": _pct_done(idx),
-                            }
-                        )
+                    emit_issue_end(
+                        end_status,
+                        format_static_issue_report(
+                            issue.nom,
+                            f"Lot d’opérations rejeté (mode strict) : {violation}",
+                            "Aucune modification n’a été appliquée pour cette issue.",
+                        ),
+                    )
                     continue
                 log.warning("Motif d'alerte révisions : %s", violation)
 
@@ -175,32 +185,20 @@ def run_review(
                     e,
                 )
                 end_status = "batch_error"
-                if on_progress:
-                    on_progress(
-                        {
-                            "kind": "issue_end",
-                            "index": idx,
-                            "total": n_issues,
-                            "title": issue.nom,
-                            "status": end_status,
-                            "percent": _pct_done(idx),
-                        }
-                    )
+                emit_issue_end(
+                    end_status,
+                    format_static_issue_report(
+                        issue.nom,
+                        "Les modifications n’ont pas pu être enregistrées dans le document Word.",
+                        f"Détail technique : {e!s}",
+                    ),
+                )
                 continue
 
             add_issue_comments_for_operations(doc, issue.nom, operations, log)
 
-            if on_progress:
-                on_progress(
-                    {
-                        "kind": "issue_end",
-                        "index": idx,
-                        "total": n_issues,
-                        "title": issue.nom,
-                        "status": end_status,
-                        "percent": _pct_done(idx),
-                    }
-                )
+            summary_html = summarize_applied_edits(client, model, issue.nom, operations, log)
+            emit_issue_end(end_status, summary_html)
 
         doc.save(out_path)
         log.info("Document enregistré : %s", out_path)
